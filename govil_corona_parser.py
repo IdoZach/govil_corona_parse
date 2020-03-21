@@ -100,6 +100,6 @@ class Parser(object):
         os.system('xdg-open {}'.format(self.tar_fname+'.html'))
 if __name__ == '__main__':
     parser = Parser(queries='חיפה')
-    # parser = Parser(queries='תל אביב')
+    # parser = Parser(queries='אשדוד')
     parser.read_pages()
     parser.save_parsed_data()
