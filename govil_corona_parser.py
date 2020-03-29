@@ -124,8 +124,8 @@ def someplot():
     exit(0)
 if __name__ == '__main__':
     #someplot()
-    #parser = Parser(queries='חיפה')
-    parser = Parser(queries=['חיפה','קרית ים','קריית ים','אתא','מוצקין','קרית חיים','קריית חיים','ביאליק','הקריות'])
+    parser = Parser(queries='חיפה')
+    #parser = Parser(queries=['חיפה','קרית ים','קריית ים','אתא','מוצקין','קרית חיים','קריית חיים','ביאליק','הקריות'])
     # parser = Parser(queries='סטוק')
     # parser = Parser(queries='כנסת')
     # parser = Parser(queries=['יקנעם','יוקנעם'])
