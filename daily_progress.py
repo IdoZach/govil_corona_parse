@@ -1,9 +1,11 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
-import numpy as np
+import numpy as np, re
 from scipy.optimize import curve_fit
 from sklearn.linear_model import LinearRegression, LogisticRegression
+import plotly.express as px
+import plotly.graph_objects as go
 
 def manual_corona_israel():
     # parse corona data manually from IMOH's telegram account (some are just assumptions).
@@ -35,9 +37,30 @@ def manual_corona_israel():
           dict(Date='3/25/2020', confirmed=2463,   recovered=64, ventilated=34, deceased=5),
           dict(Date='3/26/2020', confirmed=2666,   recovered=68, ventilated=37, deceased=8),
           dict(Date='3/27/2020', confirmed=3035,   recovered=79, ventilated=38, deceased=12),
+          dict(Date='3/28/2020', confirmed=3618, recovered=89, ventilated=43, deceased=12),
+          dict(Date='3/29/2020', confirmed=3944, recovered=132, ventilated=59, deceased=15),
+          dict(Date='3/30/2020', confirmed=4695, recovered=161, ventilated=66, deceased=16),
+
           ]
     df = pd.DataFrame(li)
     df['Date']=pd.to_datetime(df['Date'])
+
+    df_new_positives=pd.DataFrame([
+              dict(Date='3/21/2020', tests=1860, conf_negatives=0, new_positives=105),
+              dict(Date='3/22/2020', tests=3095, conf_negatives=0, new_positives=264),
+              dict(Date='3/23/2020', tests=3743, conf_negatives=0, new_positives=345),
+              dict(Date='3/24/2020', tests=5067, conf_negatives=0, new_positives=448),
+              dict(Date='3/25/2020', tests=5624, conf_negatives=0, new_positives=463),
+              dict(Date='3/26/2020', tests=5768, conf_negatives=0, new_positives=548),
+              dict(Date='3/27/2020', tests=5513, conf_negatives=0, new_positives=393),
+              dict(Date='3/28/2020', tests=5040, conf_negatives=0, new_positives=420),
+              dict(Date='3/29/2020', tests=6489, conf_negatives=140, new_positives=492),
+              dict(Date='3/30/2020', tests=5681, conf_negatives=94, new_positives=466),
+              ])
+    df_new_positives['Date'] = pd.to_datetime(df_new_positives['Date'])
+    #print(df_new_positives)
+    #print(df.diff(axis=0))
+    df = pd.merge(df,df_new_positives,on='Date',how='outer')
     return df
 
 def logistic(x,L,k,x0):
@@ -47,7 +70,7 @@ def logistic(x,L,k,x0):
 
 def fit_arbitrary_curve(X,y,fun=logistic,guess=(50,10,2)):
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html
-    params, pcov = curve_fit(fun, X, y, guess)
+    params, pcov = curve_fit(fun, X, y, guess,maxfev=10000)
     pred = fun(X, *params)
     R2 = 1.-np.var(pred - y)/np.var(y)
     return R2, params
@@ -129,6 +152,52 @@ def daily_analysis(df, mpl=False):
         plt.tight_layout()
         plt.show()
 
+def correlate_tests_and_positives(df):
+    # dict(Date='3/23/2020', tests=3743, conf_negatives=0, new_positives=345),
+    df = df.dropna()
+    df['Date_text'] = df['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
+    df1 = df.query('Date > "3/23/2020"')
+
+    fig_a = px.scatter(df, x="tests", y="new_positives", text='Date_text', log_x=False, trendline='ols')  # , size_max=60)
+    fig_b = px.scatter(df1, x="tests", y="new_positives", text='Date_text', log_x=False, trendline='ols')
+    fig_a.data[0]['marker']['size'] = 14
+    fig_a.data[0]['marker']['color'] = 'blue'
+    fig_b.data[1]['marker']['color'] = 'red'
+    # ugly
+    sel_r2 = float(re.findall('>R<sup>2<\/sup>=([\d\.]+)<br>', fig_b.data[1]['hovertemplate'])[0])
+    all_r2 = float(re.findall('>R<sup>2<\/sup>=([\d\.]+)<br>', fig_a.data[1]['hovertemplate'])[0])
+    fig = go.Figure()
+    fig.add_trace( fig_a.data[1] )
+    fig.add_trace(fig_a.data[0])
+    fig.add_trace(fig_b.data[1])
+    d = 170
+    da = 2
+    db = 2
+    fig.update_traces(textposition='top center')
+    fig.add_trace(go.Scatter(
+        x=[fig_a.data[1]['x'][da]+d, fig_b.data[1]['x'][db]+d],textfont=dict(color=['blue','red']),
+        y=[fig_a.data[1]['y'][da], fig_b.data[1]['y'][db]],
+        mode="text",        legendgroup='',  textposition="bottom center",
+        text=['R²={:.2f}'.format(all_r2), 'R²={:.2f}'.format(sel_r2)],
+    ))
+
+    fig.update_layout(
+        height=700, width=900,
+        xaxis_title='Tests',
+        yaxis_title='New positives',
+        title_text='Number of daily tests against number of new confirmed positives',
+    )
+
+    fig.show()
+    fig = go.Figure(data=[
+        go.Bar(name='Tests', x=df['Date'], y=df['tests']),
+        go.Bar(name='New positives', x=df['Date'], y=df['new_positives']),
+    ])
+    # Change the bar mode
+    fig.update_layout(barmode='group')
+    fig.show()
+
 if __name__ == '__main__':
     df = manual_corona_israel()
     daily_analysis(df,mpl=True)
+    correlate_tests_and_positives(df)
