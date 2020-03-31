@@ -111,8 +111,9 @@ def add_density_and_update_pop(df_in):
             q = row['city']
         latest = df.query('city == "{}"'.format(q))
         term = df_in['city']==row['city']
-        df_in.loc[term,'pop'] = int(latest['pop_2018'])
-        df_in.loc[term,'density'] = int(latest['density'])
+        if len(latest)>0:
+            #df_in.loc[term,'pop'] = int(latest['pop_2018'])
+            df_in.loc[term,'density'] = int(latest['density'])
     return df_in
 def get_population():
     # src: wikipedia, march 29 2020: https://he.wikipedia.org/wiki/%D7%AA%D7%91%D7%A0%D7%99%D7%AA:%D7%94%D7%A2%D7%A8%D7%99%D7%9D_%D7%94%D7%92%D7%93%D7%95%D7%9C%D7%95%D7%AA_%D7%A9%D7%9C_%D7%99%D7%A9%D7%A8%D7%90%D7%9C
@@ -208,8 +209,20 @@ def plot_density_scatter(df):
     )
 
     fig.show()
+
+def read_city_cases_imoh_xls():
+    df = pd.read_csv('/home/ido/Downloads/Telegram Desktop/corona.csv')
+    df.columns = ['city', 'pop', 'confirmed']  # 31/3/2020
+    general = pd.DataFrame([['All', 9136000, 4831]])  # population as of 2016, mattching the wikipedia city population year.
+    general.columns = df.columns
+    df = df.append(general)
+    df['pop'] = df['pop'].apply(int)
+    return df
+
+
 if __name__ == '__main__':
-    df = input_cases_per_city()
+    #df = input_cases_per_city()
+    df = read_city_cases_imoh_xls()
     df = add_density_and_update_pop(df)
     print(df.to_string())
 

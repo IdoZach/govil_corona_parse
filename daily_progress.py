@@ -40,6 +40,8 @@ def manual_corona_israel():
           dict(Date='3/28/2020', confirmed=3618, recovered=89, ventilated=43, deceased=12),
           dict(Date='3/29/2020', confirmed=3944, recovered=132, ventilated=59, deceased=15),
           dict(Date='3/30/2020', confirmed=4695, recovered=161, ventilated=66, deceased=16),
+          dict(Date='3/31/2020', confirmed=5358, recovered=224, ventilated=76, deceased=20),
+
 
           ]
     df = pd.DataFrame(li)
@@ -95,7 +97,7 @@ def daily_analysis(df, mpl=False):
         epoch = datetime.datetime.utcfromtimestamp(0)
         df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
         dates = df['date_i'].to_numpy()
-        final_date_i = (datetime.datetime(day=1, month=4, year=2020) - epoch).total_seconds()
+        final_date_i = (datetime.datetime(day=6, month=4, year=2020) - epoch).total_seconds()
         more_dates = np.round(np.linspace(dates[-1], final_date_i, 5))
         dates_i = np.concatenate((dates, more_dates))
         dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
