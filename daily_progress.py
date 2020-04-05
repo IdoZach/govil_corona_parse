@@ -58,7 +58,6 @@ def manual_corona_israel():
           dict(Date='4/03/2020', confirmed=7428, recovered=403, ventilated=96, deceased=39),
           dict(Date='4/04/2020', confirmed=7851, recovered=458, ventilated=108, deceased=43),
           dict(Date='4/05/2020', confirmed=8430, recovered=546, ventilated=106, deceased=49),
-          #dict(Date='4/02/2020', confirmed=5358, recovered=224, ventilated=76, deceased=20),
 
 
 
@@ -121,7 +120,7 @@ def daily_analysis(df, mpl=False):
         df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
         dates = df['date_i'].to_numpy()
         final_date_i = (datetime.datetime(day=10, month=4, year=2020) - epoch).total_seconds()
-        more_dates = np.round(np.linspace(dates[-1], final_date_i, 20))
+        more_dates = np.round(np.linspace(dates[-1], final_date_i, 10))
         dates_i = np.concatenate((dates, more_dates))
         dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
 
@@ -208,7 +207,7 @@ def cumulative_ventilated_prediction(df):
     df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
     dates = df['date_i'].to_numpy()
     final_date_i = (datetime.datetime(day=30, month=5, year=2020) - epoch).total_seconds()
-    more_dates = np.round(np.linspace(dates[-1], final_date_i, 100))
+    more_dates = np.round(np.linspace(dates[-1], final_date_i, ))
     dates_i = np.concatenate((dates, more_dates))
     dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
     int2dt = lambda arr: [datetime.datetime.fromtimestamp(x) for x in arr]
@@ -428,7 +427,7 @@ def daily_confirmed_city_analysis(df):
     data.extend([go.Bar(name='{}'.format(c), x=df['Date'], y=df[c]) for c in cities])
     fig = go.Figure(data=data)
     # Change the bar mode
-    fig.update_layout(barmode='stack')
+    fig.update_layout(barmode='stack',yaxis_title='Confirmed')
     fig.show()
 
 if __name__ == '__main__':
