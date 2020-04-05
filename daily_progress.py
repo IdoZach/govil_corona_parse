@@ -6,6 +6,18 @@ from scipy.optimize import curve_fit
 from sklearn.linear_model import LinearRegression, LogisticRegression
 import plotly.express as px
 import plotly.graph_objects as go
+import matplotlib.dates as mdates
+from matplotlib.dates import DateFormatter, MinuteLocator
+
+
+df_city_confirmed = pd.DataFrame([
+        dict(Date='3/31/2020', jerusalem=650, bnei_brak=571, ashkelon=114, haifa=67,tel_aviv=278),
+        dict(Date='4/1/2020', jerusalem=807, bnei_brak=723, ashkelon=125, haifa=81, tel_aviv=301),
+        dict(Date='4/3/2020', jerusalem=1132, bnei_brak=1061, ashkelon=170, haifa=96, tel_aviv=337),
+        dict(Date='4/5/2020', jerusalem=1302, bnei_brak=1214, ashkelon=191, haifa=105, tel_aviv=359),
+    ])
+df_city_confirmed['Date'] = pd.to_datetime(df_city_confirmed['Date'])
+
 
 def manual_corona_israel():
     # parse corona data manually from IMOH's telegram account (some are just assumptions).
@@ -41,6 +53,13 @@ def manual_corona_israel():
           dict(Date='3/29/2020', confirmed=3944, recovered=132, ventilated=59, deceased=15),
           dict(Date='3/30/2020', confirmed=4695, recovered=161, ventilated=66, deceased=16),
           dict(Date='3/31/2020', confirmed=5358, recovered=224, ventilated=76, deceased=20),
+          dict(Date='4/01/2020', confirmed=6092, recovered=241, ventilated=81, deceased=25),
+          dict(Date='4/02/2020', confirmed=6857, recovered=338, ventilated=87, deceased=34),
+          dict(Date='4/03/2020', confirmed=7428, recovered=403, ventilated=96, deceased=39),
+          dict(Date='4/04/2020', confirmed=7851, recovered=458, ventilated=108, deceased=43),
+          dict(Date='4/05/2020', confirmed=8430, recovered=546, ventilated=106, deceased=49),
+          #dict(Date='4/02/2020', confirmed=5358, recovered=224, ventilated=76, deceased=20),
+
 
 
           ]
@@ -58,6 +77,7 @@ def manual_corona_israel():
               dict(Date='3/28/2020', tests=5040, conf_negatives=0, new_positives=420),
               dict(Date='3/29/2020', tests=6489, conf_negatives=140, new_positives=492),
               dict(Date='3/30/2020', tests=5681, conf_negatives=94, new_positives=466),
+
               ])
     df_new_positives['Date'] = pd.to_datetime(df_new_positives['Date'])
     #print(df_new_positives)
@@ -87,18 +107,21 @@ def daily_analysis(df, mpl=False):
         ax_dilute = 3
         sp=2
         _, axes = plt.subplots(sp,sp)
-
+    df0 = df.copy()
     for i, typ in enumerate(types):
-        if typ == 'deceased':
+        df = df0.copy()
+        if typ == 'deceased':# or typ == 'ventilated':
             # take only from first death
-            start_date = df.loc[df[typ]>0]['Date'].iloc[0]
+            start_date = df.loc[df['deceased']>0]['Date'].iloc[0]
             start_date = '{:02d}/{:02d}/2020'.format(start_date.month,start_date.day)
+        else:
+            start_date = '3/5/2020'
         df = df.query('Date > "{}"'.format(start_date))
         epoch = datetime.datetime.utcfromtimestamp(0)
         df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
         dates = df['date_i'].to_numpy()
-        final_date_i = (datetime.datetime(day=6, month=4, year=2020) - epoch).total_seconds()
-        more_dates = np.round(np.linspace(dates[-1], final_date_i, 5))
+        final_date_i = (datetime.datetime(day=10, month=4, year=2020) - epoch).total_seconds()
+        more_dates = np.round(np.linspace(dates[-1], final_date_i, 20))
         dates_i = np.concatenate((dates, more_dates))
         dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
 
@@ -154,6 +177,185 @@ def daily_analysis(df, mpl=False):
         plt.tight_layout()
         plt.show()
 
+def predict(X,y,Xpred,kind):
+    if kind == 'exp':
+        y = np.log(1+y)
+        log_reg = LinearRegression().fit(X, y)
+        log_pred = log_reg.predict(Xpred)
+        pred, r2 = np.exp(log_pred) - 1 , log_reg.score(X, y)
+    elif kind == 'lin':
+        lin_reg = LinearRegression().fit(X, y)
+        pred, r2 = lin_reg.predict(Xpred), lin_reg.score(X, y)
+    elif kind == 'logi':
+        mindate = X.min()
+        X1 = X.squeeze() - mindate
+        maxdate = X1.max()
+        X1 /= maxdate
+        r2, logi_params = fit_arbitrary_curve(X1, y)
+        pred = logistic((Xpred.squeeze() - mindate) / maxdate, *logi_params)
+    return dict(pred=pred, r2=r2)
+
+def cumulative_ventilated_prediction(df):
+
+    typ = 'ventilated'
+    start_date = '3/5/2020'
+    past = 10
+    ax_dilute = 3
+    fig, ax = plt.subplots()
+
+    df = df.query('Date > "{}"'.format(start_date))
+    epoch = datetime.datetime.utcfromtimestamp(0)
+    df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
+    dates = df['date_i'].to_numpy()
+    final_date_i = (datetime.datetime(day=30, month=5, year=2020) - epoch).total_seconds()
+    more_dates = np.round(np.linspace(dates[-1], final_date_i, 100))
+    dates_i = np.concatenate((dates, more_dates))
+    dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
+    int2dt = lambda arr: [datetime.datetime.fromtimestamp(x) for x in arr]
+    #X0log,y0log=df['date_i'].to_numpy()[...,None],df[typ].apply(lambda x: np.log(1+x)).to_numpy()
+    X0, y0 = df['date_i'].to_numpy()[..., None], df[typ].to_numpy()
+
+    kinds = 'exp','lin','logi'
+    max_vent = 1500
+    date_passes_max_vent = []
+    for p in range(past):
+        mx=len(X0)-p
+        X = X0[:mx]
+        y = y0[:mx]
+
+        # predict some models
+        preds = {kind:predict(X,y,dates_i[..., None],kind=kind) for kind in kinds}
+        d=dict(past=datetime.datetime.fromtimestamp(dates_i[len(X)]),past_i=dates_i[len(X)])
+        for k,v in preds.items():
+            best = np.argmin( (v['pred']-max_vent)**2 )
+            v['date_max_vent'] = dates_i[best]
+            d[k] = datetime.datetime.fromtimestamp(dates_i[best])#.strftime('%d/%m')
+            d['{}_i'.format(k)] = dates_i[best]  # .strftime('%d/%m')
+            d['{}_r2'.format(k)] = v['r2']
+        date_passes_max_vent.append(d)
+    ddf = pd.DataFrame(date_passes_max_vent)
+    #print(ddf)
+    ddf = ddf.sort_values('past')
+    #print(ddf['past_i'].to_numpy()[...,None],ddf['exp'].to_numpy(),dates_i[...,None])
+    print(df)
+    start_date1 = (datetime.datetime(year=2020,month=3,day=22)-epoch).total_seconds()
+    end_date1 = (datetime.datetime(year=2020,month=4,day=14)-epoch).total_seconds()
+    pred_dates_i = np.linspace(start_date1,end_date1,20)
+    pred_dates = int2dt(pred_dates_i)
+    chg_pred_lin = predict(ddf['past_i'].to_numpy()[...,None],ddf['exp_i'].to_numpy(),pred_dates_i[...,None],kind='lin')
+    #chg_pred_exp = predict(ddf['past_i'].to_numpy()[..., None], ddf['exp_i'].to_numpy(), pred_dates_i[..., None], kind='exp')
+    #ddf.plot(ax=ax,x='past',y=['exp'])
+    ax.plot(ddf['past'],ddf['exp'],'.--')
+    ax.plot(pred_dates, int2dt(chg_pred_lin['pred']))
+    #ax.plot(pred_dates, int2dt(chg_pred_exp['pred']))
+    d = 15
+    ax.text(pred_dates[d],int2dt(chg_pred_lin['pred'])[d],'R²={:.2f}'.format(chg_pred_lin['r2']))
+    #ax.text(pred_dates[d], int2dt(chg_pred_exp['pred'])[d], 'R²={:.2f}'.format(chg_pred_exp['r2']))
+    #ax.plot(dates_date, int2dt(chg_pred_exp['pred']))
+    ax.set_xlabel('prediction from date')
+    # ax.set_xticklabels(ax.get_xticklabels(),rotation=45)
+    ax.set_ylabel('reach {} ventilated patients'.format(max_vent))
+    ax.yaxis.set_major_formatter(DateFormatter('%d-%m'))
+    ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+
+    fig.autofmt_xdate()
+    #fig.autofmt_ydate()
+    plt.show()
+    exit(0)
+
+
+def ventilated_confirmed_correlated(df):
+    start_date = '3/5/2020'
+    fig, ax = plt.subplots()
+
+    df = df.query('Date > "{}"'.format(start_date))
+    epoch = datetime.datetime.utcfromtimestamp(0)
+    df['date_i'] = df['Date'].apply(lambda x: (x - epoch).total_seconds())
+    dates = df['date_i'].to_numpy()
+    final_date_i = (datetime.datetime(day=30, month=5, year=2020) - epoch).total_seconds()
+    more_dates = np.round(np.linspace(dates[-1], final_date_i, 100))
+    dates_i = np.concatenate((dates, more_dates))
+    dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
+    int2dt = lambda arr: [datetime.datetime.fromtimestamp(x) for x in arr]
+    # X0log,y0log=df['date_i'].to_numpy()[...,None],df[typ].apply(lambda x: np.log(1+x)).to_numpy()
+    X0, y0 = df['date_i'].to_numpy()[..., None], df['ventilated'].to_numpy()
+    ax.plot(df['Date'],df['confirmed'])
+    ax.set_ylabel('confirmed')
+    ax2=ax.twinx()
+    col = 'tab:red'
+    ax2.set_ylabel('ventilated', color=col)
+    ax2.tick_params(axis='y', labelcolor=col)
+    ax2.plot(df['Date'],df['ventilated'],color=col)
+    ax2.spines["right"].set_position(("axes", 1.0))
+    ax3 = ax.twinx()
+    ax3.spines["right"].set_position(("axes", 1.15))
+    col = 'tab:orange'
+    ax3.set_ylabel('recovered', color=col)
+    ax3.tick_params(axis='y', labelcolor=col)
+    ax3.plot(df['Date'], df['recovered'], color=col)
+    ax4 = ax.twinx()
+    ax4.spines["right"].set_position(("axes", 1.35))
+    col = 'tab:pink'
+    ax4.set_ylabel('deceased', color=col)
+    ax4.tick_params(axis='y', labelcolor=col)
+    ax4.plot(df['Date'], df['deceased'], color=col)
+
+    ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+    #ax.spines['right'].set_position(('axes',1.1))
+
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    plt.show()
+    kinds = 'exp', 'lin', 'logi'
+    max_vent = 1500
+    date_passes_max_vent = []
+    for p in range(past):
+        mx = len(X0) - p
+        X = X0[:mx]
+        y = y0[:mx]
+
+        # predict some models
+        preds = {kind: predict(X, y, dates_i[..., None], kind=kind) for kind in kinds}
+        d = dict(past=datetime.datetime.fromtimestamp(dates_i[len(X)]), past_i=dates_i[len(X)])
+        for k, v in preds.items():
+            best = np.argmin((v['pred'] - max_vent) ** 2)
+            v['date_max_vent'] = dates_i[best]
+            d[k] = datetime.datetime.fromtimestamp(dates_i[best])  # .strftime('%d/%m')
+            d['{}_i'.format(k)] = dates_i[best]  # .strftime('%d/%m')
+            d['{}_r2'.format(k)] = v['r2']
+        date_passes_max_vent.append(d)
+    ddf = pd.DataFrame(date_passes_max_vent)
+    # print(ddf)
+    ddf = ddf.sort_values('past')
+    # print(ddf['past_i'].to_numpy()[...,None],ddf['exp'].to_numpy(),dates_i[...,None])
+    print(df)
+    start_date1 = (datetime.datetime(year=2020, month=3, day=22) - epoch).total_seconds()
+    end_date1 = (datetime.datetime(year=2020, month=4, day=14) - epoch).total_seconds()
+    pred_dates_i = np.linspace(start_date1, end_date1, 20)
+    pred_dates = int2dt(pred_dates_i)
+    chg_pred_lin = predict(ddf['past_i'].to_numpy()[..., None], ddf['exp_i'].to_numpy(), pred_dates_i[..., None],
+                           kind='lin')
+    # chg_pred_exp = predict(ddf['past_i'].to_numpy()[..., None], ddf['exp_i'].to_numpy(), pred_dates_i[..., None], kind='exp')
+    # ddf.plot(ax=ax,x='past',y=['exp'])
+    ax.plot(ddf['past'], ddf['exp'], '.--')
+    ax.plot(pred_dates, int2dt(chg_pred_lin['pred']))
+    # ax.plot(pred_dates, int2dt(chg_pred_exp['pred']))
+    d = 15
+    ax.text(pred_dates[d], int2dt(chg_pred_lin['pred'])[d], 'R²={:.2f}'.format(chg_pred_lin['r2']))
+    # ax.text(pred_dates[d], int2dt(chg_pred_exp['pred'])[d], 'R²={:.2f}'.format(chg_pred_exp['r2']))
+    # ax.plot(dates_date, int2dt(chg_pred_exp['pred']))
+    ax.set_xlabel('prediction from date')
+    # ax.set_xticklabels(ax.get_xticklabels(),rotation=45)
+    ax.set_ylabel('reach {} ventilated patients'.format(max_vent))
+    ax.yaxis.set_major_formatter(DateFormatter('%d-%m'))
+    ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+
+    fig.autofmt_xdate()
+    # fig.autofmt_ydate()
+    plt.show()
+    exit(0)
+
+
 def correlate_tests_and_positives(df):
     # dict(Date='3/23/2020', tests=3743, conf_negatives=0, new_positives=345),
     df = df.dropna()
@@ -199,7 +401,40 @@ def correlate_tests_and_positives(df):
     fig.update_layout(barmode='group')
     fig.show()
 
+def daily_confirmed_city_analysis(df):
+    # dict(Date='3/23/2020', tests=3743, conf_negatives=0, new_positives=345),
+    df_c = df_city_confirmed.copy()
+
+    #df = df.dropna()
+    print(df_c.to_string())
+    df['Date_text'] = df['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
+    #df_c['Date_text'] = df_c['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
+    cities = [x for x in df_c.columns if x != 'Date']
+    for c in cities:
+        df[c]=0
+    for i,(k,row) in enumerate(df.iterrows()):
+        #print(row['Date'], df_c['Date'].tolist())
+        if row['Date'] in df_c['Date'].tolist():
+            c_cur = df_c.query('Date == "{}"'.format(row['Date'])).drop(['Date'],axis=1)
+            all1 = c_cur[cities].sum(axis=1)
+            row['confirmed'] -= all1
+            for c in cities:
+                row[c] = c_cur[c]
+            df.iloc[i] = row
+
+    print(df.to_string())
+    data = [go.Bar(name='Confirmed', x=df['Date'], y=df['confirmed'])]
+
+    data.extend([go.Bar(name='{}'.format(c), x=df['Date'], y=df[c]) for c in cities])
+    fig = go.Figure(data=data)
+    # Change the bar mode
+    fig.update_layout(barmode='stack')
+    fig.show()
+
 if __name__ == '__main__':
     df = manual_corona_israel()
     daily_analysis(df,mpl=True)
-    correlate_tests_and_positives(df)
+    # correlate_tests_and_positives(df)
+    daily_confirmed_city_analysis(df)
+    # cumulative_ventilated_prediction(df)
+    # ventilated_confirmed_correlated(df)
