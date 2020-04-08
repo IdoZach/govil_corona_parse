@@ -10,14 +10,21 @@ import matplotlib.dates as mdates
 from matplotlib.dates import DateFormatter, MinuteLocator
 
 
-df_city_confirmed = pd.DataFrame([
-        dict(Date='3/31/2020', jerusalem=650, bnei_brak=571, ashkelon=114, haifa=67,tel_aviv=278),
+def corona_israel_city():
+    df = pd.DataFrame([
+        # this is always in the morning
+        dict(Date='3/31/2020', jerusalem=650, bnei_brak=571, ashkelon=114, haifa=67, tel_aviv=278),
         dict(Date='4/1/2020', jerusalem=807, bnei_brak=723, ashkelon=125, haifa=81, tel_aviv=301),
         dict(Date='4/3/2020', jerusalem=1132, bnei_brak=1061, ashkelon=170, haifa=96, tel_aviv=337),
         dict(Date='4/5/2020', jerusalem=1302, bnei_brak=1214, ashkelon=191, haifa=105, tel_aviv=359),
-    ])
-df_city_confirmed['Date'] = pd.to_datetime(df_city_confirmed['Date'])
+        dict(Date='4/6/2020', jerusalem=1424, bnei_brak=1323, ashkelon=207, haifa=106, tel_aviv=387),
+        dict(Date='4/7/2020', jerusalem=1464, bnei_brak=1386, ashkelon=209, haifa=108, tel_aviv=393),
 
+    ])
+    df['Date'] = pd.to_datetime(df['Date'])
+    return df
+
+df_city_confirmed = corona_israel_city()
 
 def manual_corona_israel():
     # parse corona data manually from IMOH's telegram account (some are just assumptions).
@@ -58,9 +65,10 @@ def manual_corona_israel():
           dict(Date='4/03/2020', confirmed=7428, recovered=403, ventilated=96, deceased=39),
           dict(Date='4/04/2020', confirmed=7851, recovered=458, ventilated=108, deceased=43),
           dict(Date='4/05/2020', confirmed=8430, recovered=546, ventilated=106, deceased=49),
+          dict(Date='4/06/2020', confirmed=8904, recovered=670, ventilated=109, deceased=57),
+          dict(Date='4/07/2020', confirmed=9248, recovered=770, ventilated=117, deceased=65),
 
-
-
+          # dict(Date='4/07/2020', confirmed=9004, recovered=683, ventilated=113, deceased=59), # todo  8am
           ]
     df = pd.DataFrame(li)
     df['Date']=pd.to_datetime(df['Date'])
@@ -98,7 +106,7 @@ def fit_arbitrary_curve(X,y,fun=logistic,guess=(50,10,2)):
 
 
 
-def daily_analysis(df, mpl=False):
+def daily_analysis(df, mpl=False, tar_day=15,tar_month=4):
     types = 'confirmed','recovered','ventilated','deceased'
     start_date = '3/5/2020'
 
@@ -119,7 +127,7 @@ def daily_analysis(df, mpl=False):
         epoch = datetime.datetime.utcfromtimestamp(0)
         df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
         dates = df['date_i'].to_numpy()
-        final_date_i = (datetime.datetime(day=10, month=4, year=2020) - epoch).total_seconds()
+        final_date_i = (datetime.datetime(day=tar_day, month=tar_month, year=2020) - epoch).total_seconds()
         more_dates = np.round(np.linspace(dates[-1], final_date_i, 10))
         dates_i = np.concatenate((dates, more_dates))
         dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
@@ -196,69 +204,102 @@ def predict(X,y,Xpred,kind):
 
 def cumulative_ventilated_prediction(df):
 
-    typ = 'ventilated'
-    start_date = '3/5/2020'
+    # params:
+    max_reach = 1500
+
+    types = 'ventilated','deceased'
+    mods = 'exp','logi'
     past = 10
-    ax_dilute = 3
-    fig, ax = plt.subplots()
+    tar_date = datetime.datetime(year=2020, month=4, day=8)
+    df0 = df.copy()
+    fig, axes = plt.subplots(len(types),figsize=(12,8))
+    marker='d>'
+    color='tab:blue','tab:orange'
+    mod_labels = ['Exponential model','Logistic model']
 
-    df = df.query('Date > "{}"'.format(start_date))
-    epoch = datetime.datetime.utcfromtimestamp(0)
-    df['date_i'] = df['Date'].apply(lambda x: (x-epoch).total_seconds())
-    dates = df['date_i'].to_numpy()
-    final_date_i = (datetime.datetime(day=30, month=5, year=2020) - epoch).total_seconds()
-    more_dates = np.round(np.linspace(dates[-1], final_date_i, ))
-    dates_i = np.concatenate((dates, more_dates))
-    dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
-    int2dt = lambda arr: [datetime.datetime.fromtimestamp(x) for x in arr]
-    #X0log,y0log=df['date_i'].to_numpy()[...,None],df[typ].apply(lambda x: np.log(1+x)).to_numpy()
-    X0, y0 = df['date_i'].to_numpy()[..., None], df[typ].to_numpy()
+    preds_ij={}
+    for i,typ in enumerate(types):
+        ax = axes[i]
+        preds_ij[typ]={}
+        for j,mod in enumerate(mods):
+            df = df0.copy()
+            if typ != 'deceased':
+                start_date = '3/5/2020'
+            else:
+                start_date = df.loc[df['deceased'] > 0]['Date'].iloc[0]
+                start_date = '{:02d}/{:02d}/2020'.format(start_date.month, start_date.day)
 
-    kinds = 'exp','lin','logi'
-    max_vent = 1500
-    date_passes_max_vent = []
-    for p in range(past):
-        mx=len(X0)-p
-        X = X0[:mx]
-        y = y0[:mx]
+            df = df.query('Date > "{}"'.format(start_date))
+            epoch = datetime.datetime.utcfromtimestamp(0)
+            df['date_i'] = df['Date'].apply(lambda x: (x - epoch).total_seconds())
+            dates = df['date_i'].to_numpy()
+            final_date_i = (tar_date - epoch).total_seconds()
+            more_dates = np.round(np.linspace(dates[-1] + 1, final_date_i, 10))
+            dates_i = np.concatenate((dates, more_dates))
+            dates_date = [datetime.datetime.fromtimestamp(x) for x in dates_i]
+            int2dt = lambda arr: [datetime.datetime.fromtimestamp(x) for x in arr]
+            # X0log,y0log=df['date_i'].to_numpy()[...,None],df[typ].apply(lambda x: np.log(1+x)).to_numpy()
+            X0 = df['date_i'].to_numpy()[..., None]
 
-        # predict some models
-        preds = {kind:predict(X,y,dates_i[..., None],kind=kind) for kind in kinds}
-        d=dict(past=datetime.datetime.fromtimestamp(dates_i[len(X)]),past_i=dates_i[len(X)])
-        for k,v in preds.items():
-            best = np.argmin( (v['pred']-max_vent)**2 )
-            v['date_max_vent'] = dates_i[best]
-            d[k] = datetime.datetime.fromtimestamp(dates_i[best])#.strftime('%d/%m')
-            d['{}_i'.format(k)] = dates_i[best]  # .strftime('%d/%m')
-            d['{}_r2'.format(k)] = v['r2']
-        date_passes_max_vent.append(d)
-    ddf = pd.DataFrame(date_passes_max_vent)
-    #print(ddf)
-    ddf = ddf.sort_values('past')
-    #print(ddf['past_i'].to_numpy()[...,None],ddf['exp'].to_numpy(),dates_i[...,None])
-    print(df)
-    start_date1 = (datetime.datetime(year=2020,month=3,day=22)-epoch).total_seconds()
-    end_date1 = (datetime.datetime(year=2020,month=4,day=14)-epoch).total_seconds()
-    pred_dates_i = np.linspace(start_date1,end_date1,20)
-    pred_dates = int2dt(pred_dates_i)
-    chg_pred_lin = predict(ddf['past_i'].to_numpy()[...,None],ddf['exp_i'].to_numpy(),pred_dates_i[...,None],kind='lin')
-    #chg_pred_exp = predict(ddf['past_i'].to_numpy()[..., None], ddf['exp_i'].to_numpy(), pred_dates_i[..., None], kind='exp')
-    #ddf.plot(ax=ax,x='past',y=['exp'])
-    ax.plot(ddf['past'],ddf['exp'],'.--')
-    ax.plot(pred_dates, int2dt(chg_pred_lin['pred']))
-    #ax.plot(pred_dates, int2dt(chg_pred_exp['pred']))
-    d = 15
-    ax.text(pred_dates[d],int2dt(chg_pred_lin['pred'])[d],'R²={:.2f}'.format(chg_pred_lin['r2']))
-    #ax.text(pred_dates[d], int2dt(chg_pred_exp['pred'])[d], 'R²={:.2f}'.format(chg_pred_exp['r2']))
-    #ax.plot(dates_date, int2dt(chg_pred_exp['pred']))
-    ax.set_xlabel('prediction from date')
-    # ax.set_xticklabels(ax.get_xticklabels(),rotation=45)
-    ax.set_ylabel('reach {} ventilated patients'.format(max_vent))
-    ax.yaxis.set_major_formatter(DateFormatter('%d-%m'))
-    ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+            y0 = df[typ].to_numpy()
+            kinds = 'exp','lin','logi'
 
-    fig.autofmt_xdate()
-    #fig.autofmt_ydate()
+            date_passes_max_reach = []
+            for p in range(past):
+                mx=len(X0)-p-1
+                X = X0[:mx]
+                y = y0[:mx]
+
+                # predict some models
+                preds = {kind:predict(X,y,dates_i[..., None],kind=kind) for kind in kinds}
+                d=dict(past=datetime.datetime.fromtimestamp(dates_i[len(X)]),past_i=dates_i[len(X)])
+                for k,v in preds.items():
+                    # best = np.argmin( (v['pred']-max_reach)**2 )
+                    # v['date_max_vent'] = dates_i[best]
+                    # d[k] = datetime.datetime.fromtimestamp(dates_i[best])#.strftime('%d/%m')
+                    # d['{}_i'.format(k)] = dates_i[best]  # .strftime('%d/%m')
+                    # d['{}_r2'.format(k)] = v['r2']
+
+                    # for prediction in a certain date
+                    best = np.argmin((dates_i - ((tar_date-epoch).total_seconds())) ** 2)
+                    d['{}_pred'.format(k)] = v['pred'][best]
+                date_passes_max_reach.append(d)
+            ddf = pd.DataFrame(date_passes_max_reach)
+            ddf = ddf.sort_values('past')
+            print(ddf.to_string())
+            # start_date1 = (datetime.datetime(year=2020,month=3,day=22)-epoch).total_seconds()
+            # end_date1 = (datetime.datetime(year=2020,month=4,day=14)-epoch).total_seconds()
+            # pred_dates_i = np.linspace(start_date1,end_date1,20)
+            # pred_dates = int2dt(pred_dates_i)
+            # chg_pred_lin = predict(ddf['past_i'].to_numpy()[...,None],ddf['{}_i'.format(mod)].to_numpy(),pred_dates_i[...,None],kind='lin')
+            # ax.plot(ddf['past'],ddf['{}'.format(mod)],'.--')
+            # ax.plot(pred_dates, int2dt(chg_pred_lin['pred']))
+
+            # d = 15
+            # ax.text(pred_dates[d],int2dt(chg_pred_lin['pred'])[d],'R²={:.2f}'.format(chg_pred_lin['r2']))
+            # ax.set_xlabel('prediction from date')
+            # ax.set_ylabel('reach {} {} patients'.format(max_reach,typ))
+            # ax.yaxis.set_major_formatter(DateFormatter('%d-%m'))
+            # ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+            # fig.autofmt_xdate()
+            preds_ij[typ][mod]=ddf['{}_pred'.format(mod)]
+            ax.plot(ddf['past'], preds_ij[typ][mod], '{}-'.format(marker[j]))
+            ax.set_xlabel('prediction from date')
+            ax.set_ylabel('{}'.format(typ))
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+            ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+            #ax.autofmt_xdate()
+        today = df.iloc[-1][typ]
+        ax.plot([ddf['past'].iloc[0],ddf['past'].iloc[-1]],2*[today],':',lw=3)
+        # errors
+        errors = {mm : np.abs(100.*(preds_ij[typ][mm]-today)/today) for mm in mods}
+        for j,mm in enumerate(mods):
+            fa = 2 if i==0 else 1
+            for x,y,e in zip(ddf['past'],preds_ij[typ][mm],errors[mm]):
+                ax.text(x,y+(-15*fa if j==0 else -15*fa),'{:.1f}%'.format(np.round(e,1)),rotation=-30,ha='center',color=color[j])
+        ax.legend(mod_labels+['Today'],loc='center left')
+        ax.set_title('Predicting today\'s {} from X days in the past (% - error relative to today)'.format(typ))
+    plt.tight_layout()
     plt.show()
     exit(0)
 
@@ -427,13 +468,15 @@ def daily_confirmed_city_analysis(df):
     data.extend([go.Bar(name='{}'.format(c), x=df['Date'], y=df[c]) for c in cities])
     fig = go.Figure(data=data)
     # Change the bar mode
-    fig.update_layout(barmode='stack',yaxis_title='Confirmed')
+    fig.update_layout(barmode='stack',yaxis_title='Confirmed',legend=dict(font=dict(size=20)))
+
     fig.show()
 
 if __name__ == '__main__':
     df = manual_corona_israel()
-    daily_analysis(df,mpl=True)
-    # correlate_tests_and_positives(df)
+    daily_analysis(df,mpl=True,tar_day=15)
     daily_confirmed_city_analysis(df)
-    # cumulative_ventilated_prediction(df)
+
+    # correlate_tests_and_positives(df)
+    cumulative_ventilated_prediction(df)
     # ventilated_confirmed_correlated(df)
