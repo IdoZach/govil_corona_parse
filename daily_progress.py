@@ -8,23 +8,127 @@ import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.dates as mdates
 from matplotlib.dates import DateFormatter, MinuteLocator
-
-
+import matplotlib.gridspec as gridspec
+import matplotlib._color_data as mcd
 def corona_israel_city():
     df = pd.DataFrame([
         # this is always in the morning
-        dict(Date='3/31/2020', jerusalem=650, bnei_brak=571, ashkelon=114, haifa=67, tel_aviv=278),
-        dict(Date='4/1/2020', jerusalem=807, bnei_brak=723, ashkelon=125, haifa=81, tel_aviv=301),
-        dict(Date='4/3/2020', jerusalem=1132, bnei_brak=1061, ashkelon=170, haifa=96, tel_aviv=337),
-        dict(Date='4/5/2020', jerusalem=1302, bnei_brak=1214, ashkelon=191, haifa=105, tel_aviv=359),
-        dict(Date='4/6/2020', jerusalem=1424, bnei_brak=1323, ashkelon=207, haifa=106, tel_aviv=387),
-        dict(Date='4/7/2020', jerusalem=1464, bnei_brak=1386, ashkelon=209, haifa=108, tel_aviv=393),
+        dict(Date='3/31/2020', jerusalem=650, bnei_brak=571, ashkelon=114, haifa=67, tel_aviv=278, kiryat_yam=13),
+        dict(Date='4/1/2020', jerusalem=807, bnei_brak=723, ashkelon=125, haifa=81, tel_aviv=301, kiryat_yam=16), # kiryat_yam - estimate
+        dict(Date='4/3/2020', jerusalem=1132, bnei_brak=1061, ashkelon=170, haifa=96, tel_aviv=337, kiryat_yam=19),
+        dict(Date='4/5/2020', jerusalem=1302, bnei_brak=1214, ashkelon=191, haifa=105, tel_aviv=359, kiryat_yam=20),
+        dict(Date='4/6/2020', jerusalem=1424, bnei_brak=1323, ashkelon=207, haifa=106, tel_aviv=387, kiryat_yam=21),
+        dict(Date='4/7/2020', jerusalem=1464, bnei_brak=1386, ashkelon=209, haifa=108, tel_aviv=393, kiryat_yam=21),
+        dict(Date='4/9/2020', jerusalem=1630, bnei_brak=1594, ashkelon=216, haifa=118, tel_aviv=415, kiryat_yam=21),
+        dict(Date='4/10/2020', jerusalem=1780, bnei_brak=1681, ashkelon=220, haifa=122, tel_aviv=434, kiryat_yam=21), # haifa is just an apprx here, not reported.
+        dict(Date='4/11/2020', jerusalem=1821, bnei_brak=1761, ashkelon=225, haifa=127, tel_aviv=444, kiryat_yam=21),
+        dict(Date='4/12/2020', jerusalem=1959, bnei_brak=1806, ashkelon=228, haifa=134, tel_aviv=452, kiryat_yam=21),
+        dict(Date='4/13/2020', jerusalem=2093, bnei_brak=1888, ashkelon=228, haifa=136, tel_aviv=458, kiryat_yam=21),
+        dict(Date='4/14/2020', jerusalem=2258, bnei_brak=2053, ashkelon=235, haifa=139, tel_aviv=468, kiryat_yam=21),
+
 
     ])
     df['Date'] = pd.to_datetime(df['Date'])
     return df
 
 df_city_confirmed = corona_israel_city()
+
+def tests_per_city():
+
+    df = pd.DataFrame([
+        dict(city='jerusalem', confirmed=1959, tests=18312),
+        dict(city='haifa', confirmed=134, tests=3995),
+        dict(city='bnei_brak', confirmed=1806, tests=8531),
+        dict(city='ashkelon', confirmed=228, tests=3440),
+        dict(city='tel_aviv', confirmed=452, tests=11013)
+    ])
+    df['ratio'] = df['confirmed']/df['tests']
+    print('mean ratio in selected cities: {}'.format(df['ratio'].mean()))
+    print(df)
+    df.plot()
+    plt.show()
+
+
+def get_haifa_confirmed_rank():
+    df = pd.DataFrame([
+        # this is always in the morning
+        dict(Date='3/31/2020', rank=16),
+        dict(Date='4/1/2020', rank=15),
+        dict(Date='4/3/2020', rank=15),
+        dict(Date='4/5/2020', rank=15),
+        dict(Date='4/6/2020', rank=15),
+        dict(Date='4/7/2020', rank=16),
+        dict(Date='4/9/2020', rank=16),
+        # dict(Date='4/10/2020',  rank=1),
+        dict(Date='4/11/2020', rank=18),
+
+    ])
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = pd.merge(df, df_city_confirmed, on='Date', how='outer')
+    df = df.sort_values('Date').dropna()
+    print(df)
+    fig,ax=plt.subplots()
+    ax1 = ax.twinx()
+    col = 'tab:red','tab:blue'
+    ax.set_ylabel('City rank',color=col[0])
+    ax.invert_yaxis()
+    ax1.set_ylabel('Confirmed',color=col[1])
+    ax.plot(df['Date'],df['rank'],'.:',color=col[0])
+    ax1.plot(df['Date'],df['haifa'],'.-',color=col[1])
+    ax.xaxis.set_major_formatter(DateFormatter('%d-%m'))
+    ax1.yaxis.set_tick_params(colors=col[1])
+    ax.yaxis.set_tick_params(colors=col[0])
+    ranks =list(range(int(df['rank'].min()),int(df['rank'].max()+1)))
+    ax.yaxis.set_ticks(ranks)
+    ax.set_title('Haifa confirmed and rank')
+    fig.autofmt_xdate()
+    plt.show()
+
+    #return df
+
+def get_deceased_stats():
+    df = pd.read_csv('/home/ido/Downloads/Telegram Desktop/deceased_1104.csv')
+    df = df.dropna()
+    df.columns = ['idx','age','sex','hospital','city']
+    #print(df.to_string())
+    fig,ax=plt.subplots()
+    df['city_he'] = df['city'].apply(lambda x: x[::-1] if type(x) is str else x)
+    cities = df['city_he'].unique()
+    # filter out cities with 1 deceased only
+    good_cities = []
+    for city in cities:
+        if df.loc[df['city_he'] == city].shape[0] > 1:
+            good_cities.append(city)
+    #df = df.loc[df['city_he'].isin(good_cities)]
+    cities = df['city_he'].unique()
+    counts={}
+    df['age'] = df['age'].apply(lambda x: np.round(x).astype(int))
+    st = 5
+    bins=list(range(20,105,st))
+    centers = [x+st/2 for x in bins[:-1]]
+    for i,city in enumerate(cities):
+        c,_ = np.histogram(df.loc[df['city_he']==city,'age'], bins=bins)
+        counts[city] = c
+    dfc = pd.DataFrame(counts).T
+    dfc = dfc.fillna(0)
+    colors = mcd.XKCD_COLORS
+    leg=[]
+    prev=None
+    dfc['sum'] = -dfc.sum(axis=1)
+    dfc = dfc.sort_values(by='sum').drop('sum',axis=1)
+
+    for i,(k,row) in enumerate(dfc.iterrows()):
+        ax.bar(centers,row,bottom=prev,color=colors[list(colors.keys())[5*i]],width=st-1)
+        prev=prev+row if prev is not None else row
+        leg.append('{}: {}'.format(k,int(df.loc[df['city_he']==k].shape[0])))
+    ax.set_yticks(range(0,15,1))
+    ax.legend(leg)
+    ax.set_xlabel('age')
+    ax.set_ylabel('counts')
+    ax.set_title('Deceased by age and city (with over 1 deceased), {}'.format(datetime.datetime.now().strftime('%d/%m')))
+
+    plt.show()
+
 
 def manual_corona_israel():
     # parse corona data manually from IMOH's telegram account (some are just assumptions).
@@ -67,8 +171,15 @@ def manual_corona_israel():
           dict(Date='4/05/2020', confirmed=8430, recovered=546, ventilated=106, deceased=49),
           dict(Date='4/06/2020', confirmed=8904, recovered=670, ventilated=109, deceased=57),
           dict(Date='4/07/2020', confirmed=9248, recovered=770, ventilated=117, deceased=65),
-
-          # dict(Date='4/07/2020', confirmed=9004, recovered=683, ventilated=113, deceased=59), # todo  8am
+          dict(Date='4/08/2020', confirmed=9755, recovered=864, ventilated=119, deceased=79), # actually 9.4 10am
+          dict(Date='4/09/2020', confirmed=9968, recovered=1011, ventilated=121, deceased=86),
+          dict(Date='4/10/2020', confirmed=10408, recovered=1183, ventilated=124, deceased=95),
+          dict(Date='4/11/2020', confirmed=10408, recovered=1183, ventilated=124, deceased=95),
+          dict(Date='4/12/2020', confirmed=11145, recovered=1627, ventilated=131, deceased=103),
+          dict(Date='4/13/2020', confirmed=11586, recovered=1855, ventilated=132, deceased=116),
+          dict(Date='4/14/2020', confirmed=12046, recovered=2195, ventilated=133, deceased=123),
+          dict(Date='4/15/2020', confirmed=12501, recovered=2563, ventilated=133, deceased=130),
+          #dict(Date='4/16/2020', confirmed=12591, recovered=2624, ventilated=140, deceased=140), # morning
           ]
     df = pd.DataFrame(li)
     df['Date']=pd.to_datetime(df['Date'])
@@ -84,7 +195,19 @@ def manual_corona_israel():
               dict(Date='3/28/2020', tests=5040, conf_negatives=0, new_positives=420),
               dict(Date='3/29/2020', tests=6489, conf_negatives=140, new_positives=492),
               dict(Date='3/30/2020', tests=5681, conf_negatives=94, new_positives=466),
-
+              dict(Date='3/31/2020', tests=7851, conf_negatives=0, new_positives=741), # pdf from april 11th with only the number of tests.
+              dict(Date='4/1/2020', tests=8213, conf_negatives=0, new_positives=645),
+              dict(Date='4/2/2020', tests=9082, conf_negatives=0, new_positives=733),
+              dict(Date='4/3/2020', tests=9903, conf_negatives=0, new_positives=632),
+              dict(Date='4/4/2020', tests=6647, conf_negatives=0, new_positives=456),
+              dict(Date='4/5/2020', tests=9279, conf_negatives=0, new_positives=629),
+              dict(Date='4/6/2020', tests=7250, conf_negatives=0, new_positives=352),
+              dict(Date='4/7/2020', tests=6592, conf_negatives=0, new_positives=343),
+              dict(Date='4/8/2020', tests=5570, conf_negatives=0, new_positives=436),
+              dict(Date='4/9/2020', tests=5521, conf_negatives=0, new_positives=318),
+              dict(Date='4/10/2020', tests=5980, conf_negatives=0, new_positives=374),
+              #dict(Date='4/11/2020', tests=7851, conf_negatives=, new_positives=),
+        #dict(Date='4/11/2020', tests=7851, conf_negatives=, new_positives=),
               ])
     df_new_positives['Date'] = pd.to_datetime(df_new_positives['Date'])
     #print(df_new_positives)
@@ -202,15 +325,15 @@ def predict(X,y,Xpred,kind):
         pred = logistic((Xpred.squeeze() - mindate) / maxdate, *logi_params)
     return dict(pred=pred, r2=r2)
 
-def cumulative_ventilated_prediction(df):
+def cumulative_ventilated_prediction(df,tar_day = 15):
 
     # params:
     max_reach = 1500
 
-    types = 'ventilated','deceased'
+    types = 'confirmed','ventilated','deceased'
     mods = 'exp','logi'
-    past = 10
-    tar_date = datetime.datetime(year=2020, month=4, day=8)
+    past = 11
+    tar_date = datetime.datetime(year=2020, month=4, day=tar_day)
     df0 = df.copy()
     fig, axes = plt.subplots(len(types),figsize=(12,8))
     marker='d>'
@@ -298,7 +421,7 @@ def cumulative_ventilated_prediction(df):
             for x,y,e in zip(ddf['past'],preds_ij[typ][mm],errors[mm]):
                 ax.text(x,y+(-15*fa if j==0 else -15*fa),'{:.1f}%'.format(np.round(e,1)),rotation=-30,ha='center',color=color[j])
         ax.legend(mod_labels+['Today'],loc='center left')
-        ax.set_title('Predicting today\'s {} from X days in the past (% - error relative to today)'.format(typ))
+        ax.set_title('Predicting {}\'s {} from X days in the past (% - error relative to today)'.format(tar_date.strftime('%d/%m'),typ))
     plt.tight_layout()
     plt.show()
     exit(0)
@@ -450,6 +573,8 @@ def daily_confirmed_city_analysis(df):
     df['Date_text'] = df['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
     #df_c['Date_text'] = df_c['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
     cities = [x for x in df_c.columns if x != 'Date']
+    # ord_cities = ['bnei_brak','jerusalem']
+    # cities = [x for x in cities if x not in ord_cities]+ord_cities
     for c in cities:
         df[c]=0
     for i,(k,row) in enumerate(df.iterrows()):
@@ -472,11 +597,121 @@ def daily_confirmed_city_analysis(df):
 
     fig.show()
 
+def daily_confirmed_city_single(df,city='kiryat_yam'):
+    # dict(Date='3/23/2020', tests=3743, conf_negatives=0, new_positives=345),
+    df_c = df_city_confirmed.copy()
+
+    df['Date_text'] = df['Date'].apply(lambda x:datetime.datetime.strftime(x,'%d/%m'))
+
+    #cities = [x for x in df_c.columns if x != 'Date']
+    # ord_cities = ['bnei_brak','jerusalem']
+    print(df_c.to_string())
+    cities = [city]
+    # cities = [x for x in cities if x not in ord_cities]+ord_cities
+    for c in cities:
+        df[c] = 0
+    for i,(k,row) in enumerate(df.iterrows()):
+        #print(row['Date'], df_c['Date'].tolist())
+        if row['Date'] in df_c['Date'].tolist():
+            c_cur = df_c.query('Date == "{}"'.format(row['Date'])).drop(['Date'],axis=1)
+            all1 = c_cur[cities].sum(axis=1)
+            row['confirmed'] -= all1
+            for c in cities:
+                row[c] = c_cur[c]
+            df.iloc[i] = row
+    df = df.query('Date > "3/29/2020"')
+    df = df.drop('confirmed',axis=1)
+    #print(df.to_string())
+    data = [go.Bar(name=city, x=df['Date'], y=df[city])]
+
+    #data.extend([go.Bar(name='{}'.format(c), x=df['Date'], y=df[c]) for c in cities])
+    fig = go.Figure(data=data)
+    # Change the bar mode
+    fig.update_layout(barmode='stack',title=city,yaxis_title='Confirmed',yaxis=dict(titlefont=dict(size=20)))
+
+    fig.show()
+
+def estimate_confirmed_for_test_num(df):
+    # just some experiment, did not pan out
+    df = df.dropna()
+    df['Date_text'] = df['Date'].apply(lambda x: datetime.datetime.strftime(x, '%d/%m'))
+    # df1 = df.query('Date > "3/23/2020"')
+    pp = {0: df.query('tests < 3500'),
+          1: df.query('tests >=3500'),}# and tests < 7500'),
+      #2: df.query('tests >= 7500')}
+    a, b = 'tests', 'new_positives'
+    grp1_rat = np.mean(1. * pp[1][b] / pp[1][a])
+    grp1_std = np.std(1.*pp[1][b]/pp[1][a])
+    ratios = np.array([grp1_rat, grp1_rat-grp1_std, grp1_rat+grp1_std])
+    print('ratios: {}'.format(ratios))
+    est_line_x = np.array([df['tests'].min(), df['tests'].max()])
+    est_line_y = np.outer(ratios,est_line_x)
+    markers = '-','--',':'
+    #gs1 = gridspec.GridSpec(3, 1)
+    #gs1.update(wspace=0.025, hspace=0.05)
+    fig,ax=plt.subplots(3,figsize=(7,8))
+
+    for i in range(len(pp)):
+        ax[0].scatter(pp[i][a],pp[i][b])
+    # correlate estimates
+    for i, ys in enumerate(est_line_y):
+        ax[0].plot(est_line_x,ys,markers[i],color='tab:green')
+    leg = ['Mean est.','Lower est.','Higher est.']
+    ax[0].legend(leg)
+    ax[0].set_xlabel('No. of tests')
+    ax[0].set_ylabel('Daily positives')
+    ax[0].set_title('New positives v. number of daily tests')
+    start_date = datetime.datetime(2020,3,23).strftime('%m/%d/%Y')
+    init_confirmed = int(df.query('Date == "{}"'.format(start_date))['confirmed'])
+    df_rest = df.query('Date > "{}"'.format(start_date))
+    agg_positives = init_confirmed + df_rest['new_positives'].cumsum()
+    ax[1].plot(df['Date_text'],df['confirmed'],'.-',lw=2)
+    #ax[1].plot(df_rest['Date_text'],agg_positives)
+    for i, rat in enumerate(ratios):
+        est = init_confirmed+(df_rest['tests']*rat).cumsum()
+        ax[1].plot(df_rest['Date_text'],est,markers[i])
+    #ax[1].legend(['Raw','aggregated daily positives']+leg)
+    ax[1].legend(['Raw'] + leg)
+    ax[1].set_xticklabels(df['Date_text'], rotation=45)
+    ax[1].set_xlabel('Date')
+    ax[1].set_ylabel('Confirmed')
+    ax[1].set_title('Raw confirmed cases v. estimates')
+    #print(df_rest['tests'].mean())
+    # let's see what we would observe if the number of tests were different.
+    n_tests = np.array([3000, 5000, 7000, 9000])
+    ww = 200
+    rr = [0,-1,1]
+    colors = 'tab:orange','tab:green','tab:red'
+    true = init_confirmed + df_rest['new_positives'].cumsum()
+    for i, rat in enumerate(ratios):
+        dat = []
+        for j, n in enumerate(n_tests):
+            est = init_confirmed + ((df_rest['tests']*0+n) * rat).cumsum()
+            dat.append(est.iloc[-1])
+        dat = np.array(dat)
+        ax[2].bar(n_tests+ww*rr[i], dat,width=ww,color=colors[i])
+    #ax[2].bar(n_tests+ww*2, dat*0+true.iloc[-1],width=ww,color='tab:blue')
+    ax[2].plot([n_tests[0]-ww*2,n_tests[-1]+ww*2],2*[true.iloc[-1]],'--',color='tab:blue')
+    ax[2].set_xticks(n_tests)
+    ax[2].legend(['Confirmed']+leg)
+    ax[2].set_xlabel('Number of tests')
+    ax[2].set_ylabel('Estimated confirmed cases')
+    ax[2].set_yticks(range(1000,20000,4000))
+    ax[2].grid('minor')
+    ax[2].set_title('Estimated confirmed cases by number of tests')
+    plt.tight_layout()
+    plt.show()
 if __name__ == '__main__':
     df = manual_corona_israel()
-    daily_analysis(df,mpl=True,tar_day=15)
-    daily_confirmed_city_analysis(df)
+    # daily_analysis(df,mpl=True,tar_day=20)
+    # daily_confirmed_city_analysis(df)
+    # daily_confirmed_city_single(df,city='kiryat_yam')
+    # get_haifa_confirmed_rank()
+    cumulative_ventilated_prediction(df,tar_day=15)
+    #estimate_confirmed_for_test_num(df)
+    # tests_per_city()
 
     # correlate_tests_and_positives(df)
-    cumulative_ventilated_prediction(df)
+    # deceased_df = get_deceased_stats()
+
     # ventilated_confirmed_correlated(df)
